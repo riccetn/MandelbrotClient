@@ -4,18 +4,14 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Consumer;
 
 public class HttpClient {
 	private static enum State {
@@ -25,7 +21,8 @@ public class HttpClient {
 
 	private State state = State.CONNECTING;
 	private SocketChannel socket;
-	private Consumer<HttpClient> doneCallback;
+	private DoneCallback doneCallback;
+	private Object uobj;
 
 	private ByteBuffer bSendBuf;
 
@@ -37,10 +34,11 @@ public class HttpClient {
 	private String statusMessage;
 	private Map<String, String> headers;
 
-	private HttpClient(SocketChannel socket, ByteBuffer bSendBuf, Consumer<HttpClient> doneCallback) {
+	private HttpClient(SocketChannel socket, ByteBuffer bSendBuf, DoneCallback doneCallback, Object uobj) {
 		this.socket = socket;
 		this.bSendBuf = bSendBuf;
 		this.doneCallback = doneCallback;
+		this.uobj = uobj;
 	}
 
 	public void selected(SelectionKey key) throws IOException {
@@ -54,7 +52,7 @@ public class HttpClient {
 			this.onReadBody(key);
 	}
 
-	public static HttpClient open(String remoteHostName, int remotePort, String requestUri, Selector selector, Consumer<HttpClient> doneCallback) throws IOException {
+	public static HttpClient open(String remoteHostName, int remotePort, String requestUri, Selector selector, DoneCallback doneCallback, Object uobj) throws IOException {
 		SocketChannel socket = SocketChannel.open();
 		socket.configureBlocking(false);
 
@@ -70,7 +68,7 @@ public class HttpClient {
 		chSendBuf.put("\r\n");
 		chSendBuf.flip();
 
-		HttpClient client = new HttpClient(socket, ascii.encode(chSendBuf), doneCallback);
+		HttpClient client = new HttpClient(socket, ascii.encode(chSendBuf), doneCallback, uobj);
 
 		SelectionKey key = socket.register(selector, SelectionKey.OP_CONNECT, client);
 		if(socket.connect(new InetSocketAddress(remoteHostName, remotePort)))
@@ -153,12 +151,7 @@ public class HttpClient {
 			this.bRecvBuf.flip();
 			this.bRecvBuf = null;
 
-			FileChannel out = FileChannel.open(Paths.get("mandelbrot.pgm"), StandardOpenOption.WRITE, StandardOpenOption.CREATE);
-			for(ByteBuffer buf : this.bRecvBuffers)
-				out.write(buf);
-			out.close();
-
-			doneCallback.accept(this);
+			this.doneCallback.done(this, this.bRecvBuffers, this.uobj);
 			return;
 		}
 		if(!this.bRecvBuf.hasRemaining()) {
@@ -166,5 +159,10 @@ public class HttpClient {
 			this.bRecvBuf = ByteBuffer.allocate(4096);
 			this.bRecvBuffers.add(this.bRecvBuf);
 		}
+	}
+
+	@FunctionalInterface
+	public static interface DoneCallback {
+		public abstract void done(HttpClient client, List<ByteBuffer> buffers, Object uobj);
 	}
 }
