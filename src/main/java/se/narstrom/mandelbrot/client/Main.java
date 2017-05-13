@@ -19,7 +19,41 @@ public class Main {
 	private static List<HttpClient> clients = new ArrayList<>();
 	private static WritableRaster raster = Raster.createInterleavedRaster(DataBuffer.TYPE_BYTE, 1000, 1000, 1, null);
 
-	public static void main(final String[] args) throws IOException {
+	public static void main(String[] args) throws IOException {
+		if(args.length < 7) {
+			System.err.println("Usage: java -jar MandelbrotClient.jar real_min real_max imag_min imag_max width height divisions");
+			System.exit(1);
+		}
+		double realMin = Double.parseDouble(args[0]);
+		double realMax = Double.parseDouble(args[1]);
+		if(realMin >= realMax) {
+			System.err.println("!(realMin < realMax)");
+			System.exit(1);
+		}
+		double imagMin = Double.parseDouble(args[2]);
+		double imagMax = Double.parseDouble(args[3]);
+		if(imagMin >= imagMax) {
+			System.err.println("!(imagMin < imagMax)");
+			System.exit(1);
+		}
+		int width = Integer.parseInt(args[4]);
+		int height = Integer.parseInt(args[5]);
+		int devisions = Integer.parseInt(args[6]);
+		if(width < 0 || height < 0 || devisions < 0) {
+			System.err.println("width < 0 || height < 0 || devisions < 0");
+			System.exit(1);
+		}
+
+		for(int row = 0; row < devisions; ++row) {
+			for(int col = 0; col < devisions; ++col) {
+				System.out.format("(%d %d): ", row, col);
+				System.out.print(realMin + col*(realMax - realMin)/devisions);
+				System.out.print(' ');
+				System.out.print(imagMax - (row+1)*(imagMax - imagMin)/devisions);
+				System.out.println();
+			}
+		}
+/*
 		Selector selector = Selector.open();
 		clients.add(HttpClient.open("localhost", 8080, "/MandelbrotServer/mandelbrot/-2/-1.5/1/0/1000/500/1024", selector, Main::doneCallback, 0));
 		clients.add(HttpClient.open("localhost", 8080, "/MandelbrotServer/mandelbrot/-2/0/1/1.5/1000/500/1024", selector, Main::doneCallback, 1));
@@ -34,6 +68,7 @@ public class Main {
 		BufferedImage img = new BufferedImage(1000, 1000, BufferedImage.TYPE_BYTE_GRAY);
 		img.setData(raster);
 		ImageIO.write(img, "png", new File("mandelbrot.png"));
+		*/
 	}
 
 	private static void doneCallback(HttpClient client, List<ByteBuffer> buffers, Object uobj) {
@@ -59,7 +94,7 @@ public class Main {
 		int rowStride = 1000;
 		for(int row = 0; row < 500; ++row) {
 			for(int col = 0; col < 1000; ++col) {
-				raster.setSample(col, index*500 + row, 0, Integer.parseInt(strs[4 + row*rowStride + col]));
+				raster.setSample(col, (1-index)*500 + row, 0, Integer.parseInt(strs[4 + row*rowStride + col]));
 			}
 		}
 	}
