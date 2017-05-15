@@ -13,10 +13,36 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * A single session with the server.
+ *
+ * @author Rickard Närström &lt;rickard@narstrom.se&gt;
+ */
 public class HttpClient {
+	/**
+	 * The state of the connection.
+	 */
 	private static enum State {
-		CONNECTING, SENDING, READING_HEADERS, READING_BODY, CLOSED
-	};
+		/** Is establishing a TCP connection */
+		CONNECTING,
+		/** Is sending HTTP headers to peer */
+		SENDING,
+		/** Is receiving HTTP headers from peer */
+		READING_HEADERS,
+		/** Is receiving the payload from peer */
+		READING_BODY,
+		/** Connection is closed, all data downloaded */
+		CLOSED
+	}
+
+	/**
+	 * Type of callback that will be called when data has been downloaded and the connection is closing.
+	 */
+	@FunctionalInterface
+	public static interface DoneCallback {
+		public abstract void done(HttpClient client, List<ByteBuffer> buffers, Object uobj);
+	}
+
 	private static final String USER_AGENT = "MandelbrotClient/0.0.1";
 
 	private State state = State.CONNECTING;
@@ -41,6 +67,12 @@ public class HttpClient {
 		this.uobj = uobj;
 	}
 
+	/**
+	 * Call when this is selected by a call to {@link Selection#select()} or equivalent.
+	 *
+	 * @param key			the selection key associated with this connection.
+	 * @throws IOException	if an error occurred when reading or writing to the socket.
+	 */
 	public void selected(SelectionKey key) throws IOException {
 		if(this.state == State.CONNECTING && key.isConnectable() && socket.finishConnect())
 			this.onConnected(key);
@@ -52,6 +84,18 @@ public class HttpClient {
 			this.onReadBody(key);
 	}
 
+	/**
+	 * Creates a new connection and initialise a download with a remote host.
+	 *
+	 * @param remoteHostName		domain name of the remote host
+	 * @param remotePort			TCP port number to connect to on the remote host
+	 * @param requestUri			HTTP request URI of the resource to download
+	 * @param selector				to use to multiplex this connection with others
+	 * @param doneCallback			callback that will be called when resource is completely downloaded
+	 * @param uobj					user object reference that are passed to callback.
+	 * @return						the HttpClient that handles this download
+	 * @throws IOException			if an error occurred opening the socket
+	 */
 	public static HttpClient open(String remoteHostName, int remotePort, String requestUri, Selector selector, DoneCallback doneCallback, Object uobj) throws IOException {
 		SocketChannel socket = SocketChannel.open();
 		socket.configureBlocking(false);
@@ -159,10 +203,5 @@ public class HttpClient {
 			this.bRecvBuf = ByteBuffer.allocate(4096);
 			this.bRecvBuffers.add(this.bRecvBuf);
 		}
-	}
-
-	@FunctionalInterface
-	public static interface DoneCallback {
-		public abstract void done(HttpClient client, List<ByteBuffer> buffers, Object uobj);
 	}
 }

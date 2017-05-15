@@ -16,13 +16,25 @@ import java.util.List;
 
 import javax.imageio.ImageIO;
 
+/**
+ * Application that divides the requested Mandelbrot set into smaller chunks and parallelise the generation of
+ * each chunk on a separate server session, and then reassemble the chunks back into a single image.
+ *
+ * @author Rickard Närström &lt;rickard@narstrom.se&gt;
+ */
 public class Main {
 	private static List<HttpClient> clients = new ArrayList<>();
-	private static WritableRaster raster = Raster.createInterleavedRaster(DataBuffer.TYPE_BYTE, 1000, 1000, 1, null);
+	private static WritableRaster raster;
 
+	/**
+	 * Application entry point.
+	 *
+	 * @param args				command line arguments
+	 * @throws IOException		an unrecoverable I/O error that should cause the application to terminate
+	 */
 	public static void main(String[] args) throws IOException {
 		if(args.length < 8) {
-			System.err.println("Usage: java -jar MandelbrotClient.jar real_min real_max imag_min imag_max width height divisions appRootUri");
+			System.err.println("Usage: java -jar MandelbrotClient.jar real_min real_max imag_min imag_max nMaxIterations width height divisions appRootUri output");
 			System.exit(1);
 		}
 		double realMin = Double.parseDouble(args[0]);
@@ -37,14 +49,18 @@ public class Main {
 			System.err.println("!(imagMin < imagMax)");
 			System.exit(1);
 		}
-		int width = Integer.parseInt(args[4]);
-		int height = Integer.parseInt(args[5]);
-		int devisions = Integer.parseInt(args[6]);
-		if(width < 0 || height < 0 || devisions < 0) {
-			System.err.println("width < 0 || height < 0 || devisions < 0");
+		int nMaxIterations = Integer.parseInt(args[4]);
+		int width = Integer.parseInt(args[5]);
+		int height = Integer.parseInt(args[6]);
+		int devisions = Integer.parseInt(args[7]);
+		if(nMaxIterations < 0 || width < 0 || height < 0 || devisions < 0) {
+			System.err.println("nMaxIterations < 0 || width < 0 || height < 0 || devisions < 0");
 			System.exit(1);
 		}
-		URI appRoot = URI.create(args[7]);
+		URI appRoot = URI.create(args[8]);
+		String output = args[9];
+
+		raster = Raster.createInterleavedRaster(DataBuffer.TYPE_BYTE, width, height, 1, null);
 
 		Selector selector = Selector.open();
 
@@ -64,7 +80,7 @@ public class Main {
 						segmentImagMax + "/" +
 						segmentWidth + "/" +
 						segmentHeight + "/" +
-						256);
+						nMaxIterations);
 				Offsets offsets = new Offsets(row*height/devisions, col*width/devisions);
 				System.out.println(segmentUri + " " + offsets);
 				clients.add(HttpClient.open(segmentUri.getHost(),
@@ -82,9 +98,9 @@ public class Main {
 				((HttpClient)key.attachment()).selected(key);
 		}
 
-		BufferedImage img = new BufferedImage(1000, 1000, BufferedImage.TYPE_BYTE_GRAY);
+		BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
 		img.setData(raster);
-		ImageIO.write(img, "png", new File("mandelbrot.png"));
+		ImageIO.write(img, "png", new File(output));
 	}
 
 	private static void doneCallback(HttpClient client, List<ByteBuffer> buffers, Object uobj) {
@@ -105,6 +121,7 @@ public class Main {
 		if(!strs[3].equals("256"))
 			throw new RuntimeException("Unrecognized data returned by server");
 
+		System.out.println(offsets + ": " + width + " " + height);
 		for(int row = 0; row < width; ++row) {
 			for(int col = 0; col < height; ++col) {
 				raster.setSample(offsets.left + col, offsets.top + row, 0, Integer.parseInt(strs[4 + row*width + col]));
